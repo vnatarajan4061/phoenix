@@ -20,4 +20,4 @@ ruff:
 ruff-fix:
 	uvx ruff check $(PYTHON_FILES) --fix
 	
-.PHONY: run run-% requirements requirements-% setup-git-hooks lint-all
+.PHONY: run run-% requirements requirements-%
