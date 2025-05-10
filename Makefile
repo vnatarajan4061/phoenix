@@ -2,13 +2,6 @@ PYTHON_FILES = `(find . -type f -iname "*.py" -not -path "./.venv/*")`
 
 MAKEFLAGS += --no-print-directory
 
-setup-git-hooks:
-	pre-commit install
-	pre-commit install --hook-type commit-msg
-
-lint-all:
-	pre-commit run --all-files 
-
 update:
 	@uv lock --upgrade
 	@uv sync
