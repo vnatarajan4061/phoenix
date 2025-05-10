@@ -175,3 +175,15 @@ cython_debug/
 
 # VS Code settings
 .vscode/
+
+# Node dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Husky and commitlint (optional, see note below)
+.husky/
+commitlint.config.js
+package.json
+package-lock.json

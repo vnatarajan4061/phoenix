@@ -1,5 +1,5 @@
 run:
-	cd ../../ && .venv/bin/python src/ingest-mlb/main.py $(filter-out $@,$(MAKECMDGOALS))
+	@uv run main.py $(filter-out $@,$(MAKECMDGOALS))
 
 %:
 	@:
