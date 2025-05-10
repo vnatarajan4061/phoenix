@@ -187,3 +187,6 @@ yarn-error.log
 commitlint.config.js
 package.json
 package-lock.json
+
+# Local api documentation
+stats-api.json
