@@ -2,8 +2,16 @@ PYTHON_FILES = `(find . -type f -iname "*.py" -not -path "./.venv/*")`
 
 MAKEFLAGS += --no-print-directory
 
+setup-git-hooks:
+	pre-commit install
+	pre-commit install --hook-type commit-msg
+
+lint-all:
+	pre-commit run --all-files 
+
 update:
-	uv pip install --upgrade .
+	@uv lock --upgrade
+	@uv sync
 
 RUNS = $(shell find src -mindepth 1 -maxdepth 1 -type d -not -name "common" -exec test -f {}/Makefile \; -print | xargs -n1 basename)
 
@@ -19,4 +27,4 @@ ruff:
 ruff-fix:
 	uvx ruff check $(PYTHON_FILES) --fix
 	
-.PHONY: run run-% requirements requirements-%
+.PHONY: run run-% requirements requirements-% setup-git-hooks lint-all
