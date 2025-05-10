@@ -12,7 +12,14 @@ def _extract_team_schedules(response: requests.Response) -> pd.DataFrame:
     schedules = pd.DataFrame(
         [
             TeamSchedules.model_validate(
-                {"game_date": date_item["date"], "game_pk": game["gamePk"]}
+                {
+                    "game_date": date_item["date"],
+                    "game_id": game["gamePk"],
+                    "home_team_id": game["teams"]["home"]["team"]["id"],
+                    "home_team_name": game["teams"]["home"]["team"]["name"],
+                    "away_team_id": game["teams"]["away"]["team"]["id"],
+                    "away_team_name": game["teams"]["away"]["team"]["name"],
+                },
             ).model_dump()
             for date_item in response.json().get("dates", [])
             for game in date_item.get("games", [])
