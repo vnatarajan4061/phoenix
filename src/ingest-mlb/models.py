@@ -1,16 +1,16 @@
-from datetime import datetime
+from typing import Any
 
-from pydantic import field_serializer
+from pydantic import Field, model_validator
 
 from common.models import CustomModel
 
 
 class TeamSchedules(CustomModel):
-    team_id: int
-    date: str
-    opponent_id: int
+    game_date: str = Field(..., alias="game_date")
+    game_id: int = Field(...)
 
-
-@field_serializer(mode="before")
-def serialize_date(cls, value: datetime.date) -> str:
-    return value.strftime("%Y-%m-%d")
+    @model_validator(mode="before")
+    @classmethod
+    def parse_games(cls, values: dict[str, Any]) -> dict[str, Any]:
+        values["game_id"] = values["game_pk"]
+        return values
