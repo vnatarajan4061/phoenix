@@ -1,4 +1,4 @@
-from mlb import process_schedules
+from mlb import process_game_information, process_schedules
 
 # ROUTINE_MAP = {
 #     "process_schedules": process_schedules,
@@ -9,3 +9,4 @@ if __name__ == "__main__":
 
     # parser.add_argument("--process-schedules", action="store_true")
     print(process_schedules("2025-05-01", "2025-05-02"))
+    print(process_game_information("2025-05-01", "2025-05-02"))
