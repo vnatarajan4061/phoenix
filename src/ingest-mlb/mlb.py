@@ -1,14 +1,18 @@
+import asyncio
 import os
 from typing import Any, List
 
+import httpx
 import pandas as pd
-import requests
 from dotenv import load_dotenv
+
+from common.decorators import retry
 
 from models import GameInformation, TeamSchedules
 
 
-def _get_api_endpoints_and_params(endpoint_type: str, **kwargs) -> requests.Response:
+@retry(attempts=3, calls_per_second=10)
+async def _get_api_endpoints_and_params(endpoint_type: str, **kwargs) -> httpx.Response:
     load_dotenv()
     api_key: str = os.getenv("MLB_API")
 
@@ -31,10 +35,11 @@ def _get_api_endpoints_and_params(endpoint_type: str, **kwargs) -> requests.Resp
         case _:
             raise ValueError(f"Unknown endpoint type: {endpoint_type}")
 
-    return requests.get(f"{api_key}/{endpoint}", params=params)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        return await client.get(f"{api_key}/{endpoint}", params=params)
 
 
-def _extract_team_schedules(response: requests.Response) -> List[dict[str, Any]]:
+def _extract_team_schedules(response: httpx.Response) -> List[dict[str, Any]]:
     schedules = [
         {
             "game_date": date_item["date"],
@@ -48,7 +53,7 @@ def _extract_team_schedules(response: requests.Response) -> List[dict[str, Any]]
 
 
 def _extract_game_information(
-    responses: List[requests.Response],
+    responses: List[httpx.Response],
 ) -> List[dict[str, Any]]:
     game_info: List[dict[str, Any]] = [
         {
@@ -74,44 +79,74 @@ def _extract_player_bios(players: dict) -> dict:
     return {}
 
 
-def process_schedules(start_date: str, end_date: str) -> pd.DataFrame:
-    params: dict = {"start_date": start_date, "end_date": end_date}
+async def _fetch_data(endpoint_type: str, extract_func, **kwargs):
+    """Generic async function to fetch and extract data from any endpoint"""
+    response = await _get_api_endpoints_and_params(
+        endpoint_type=endpoint_type, **kwargs
+    )
+    return extract_func(response)
 
-    response: requests.Response = _get_api_endpoints_and_params(
-        endpoint_type="schedule", **params
+
+async def _get_games(start_date: str, end_date: str):
+    """Async function to get game information for a date range"""
+    # Get schedules first
+    schedules = await _fetch_data(
+        endpoint_type="schedule",
+        extract_func=_extract_team_schedules,
+        start_date=start_date,
+        end_date=end_date,
     )
 
-    schedules: pd.DataFrame = pd.DataFrame.from_records(
-        [
-            TeamSchedules.model_validate(schedule).model_dump()
-            for schedule in _extract_team_schedules(response)
-        ],
+    # Gather all game API calls concurrently
+    game_responses = await asyncio.gather(
+        *[
+            _get_api_endpoints_and_params(
+                endpoint_type="game_information", game_id=schedule["game_id"]
+            )
+            for schedule in schedules
+        ]
     )
 
-    return schedules
+    # Extract data from all responses
+    return _extract_game_information(game_responses)
 
 
-def process_game_information(start_date: str, end_date: str) -> pd.DataFrame:
-    params: dict = {"start_date": start_date, "end_date": end_date}
-
-    response: requests.Response = _get_api_endpoints_and_params(
-        endpoint_type="schedule", **params
-    )
-
-    schedules = _extract_team_schedules(response)
-
-    game_endpoints: List[requests.Response] = [
-        _get_api_endpoints_and_params(
-            endpoint_type="game_information", game_id=schedule["game_id"]
+def process_schedules(
+    start_date: str, end_date: str, async_mode: bool = False
+) -> pd.DataFrame | List[TeamSchedules]:
+    """Process team schedules with optional async mode"""
+    extracted_data = asyncio.run(
+        _fetch_data(
+            endpoint_type="schedule",
+            extract_func=_extract_team_schedules,
+            start_date=start_date,
+            end_date=end_date,
         )
-        for schedule in schedules
-    ]
-
-    game_information: pd.DataFrame = pd.DataFrame.from_records(
-        [
-            GameInformation.model_validate(game).model_dump()
-            for game in _extract_game_information(game_endpoints)
-        ],
     )
 
-    return game_information
+    if async_mode:
+        return [TeamSchedules.model_validate(schedule) for schedule in extracted_data]
+    else:
+        return pd.DataFrame(
+            [
+                TeamSchedules.model_validate(schedule).model_dump()
+                for schedule in extracted_data
+            ]
+        )
+
+
+def process_game_information(
+    start_date: str, end_date: str, async_mode: bool = False
+) -> pd.DataFrame | List[GameInformation]:
+    """Process game information with optional async mode"""
+    extracted_data = asyncio.run(_get_games(start_date, end_date))
+
+    if async_mode:
+        return [GameInformation.model_validate(game) for game in extracted_data]
+    else:
+        return pd.DataFrame(
+            [
+                GameInformation.model_validate(game).model_dump()
+                for game in extracted_data
+            ]
+        )
