@@ -3,7 +3,6 @@ import os
 from typing import Any, List
 
 import httpx
-import pandas as pd
 from dotenv import load_dotenv
 
 from common.decorators import retry
@@ -57,7 +56,7 @@ def _extract_game_information(
 ) -> List[dict[str, Any]]:
     game_info: List[dict[str, Any]] = [
         {
-            "game_id": int(response.url.split("/game/")[1].split("/feed")[0]),
+            "game_id": int(str(response.url).split("/game/")[1].split("/feed")[0]),
             "weather": response.json().get("gameData", {}).get("weather", {}),
             "boxscore": response.json().get("liveData", {}).get("boxscore", {}),
         }
@@ -111,10 +110,8 @@ async def _get_games(start_date: str, end_date: str):
     return _extract_game_information(game_responses)
 
 
-def process_schedules(
-    start_date: str, end_date: str, async_mode: bool = False
-) -> pd.DataFrame | List[TeamSchedules]:
-    """Process team schedules with optional async mode"""
+def process_schedules(start_date: str, end_date: str) -> List[TeamSchedules]:
+    """Process team schedules and return validated models"""
     extracted_data = asyncio.run(
         _fetch_data(
             endpoint_type="schedule",
@@ -124,29 +121,11 @@ def process_schedules(
         )
     )
 
-    if async_mode:
-        return [TeamSchedules.model_validate(schedule) for schedule in extracted_data]
-    else:
-        return pd.DataFrame(
-            [
-                TeamSchedules.model_validate(schedule).model_dump()
-                for schedule in extracted_data
-            ]
-        )
+    return [TeamSchedules.model_validate(schedule) for schedule in extracted_data]
 
 
-def process_game_information(
-    start_date: str, end_date: str, async_mode: bool = False
-) -> pd.DataFrame | List[GameInformation]:
-    """Process game information with optional async mode"""
+def process_game_information(start_date: str, end_date: str) -> List[GameInformation]:
+    """Process game information and return validated models"""
     extracted_data = asyncio.run(_get_games(start_date, end_date))
 
-    if async_mode:
-        return [GameInformation.model_validate(game) for game in extracted_data]
-    else:
-        return pd.DataFrame(
-            [
-                GameInformation.model_validate(game).model_dump()
-                for game in extracted_data
-            ]
-        )
+    return [GameInformation.model_validate(game) for game in extracted_data]
