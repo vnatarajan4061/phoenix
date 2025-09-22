@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from pydantic import Field, model_validator
@@ -75,7 +76,6 @@ class Player(CustomModel):
     full_name: str = Field(..., alias="fullName")
     first_name: str = Field(..., alias="firstName")
     last_name: str = Field(..., alias="lastName")
-    primary_number: int | None = Field(default=None, alias="primaryNumber")
     birth_date: str | None = Field(default=None, alias="birthDate")
     current_age: int | None = Field(default=None, alias="currentAge")
     birth_city: str | None = Field(default=None, alias="birthCity")
@@ -83,22 +83,40 @@ class Player(CustomModel):
     height: str | None = Field(default=None, alias="height")
     weight: int | None = Field(default=None, alias="weight")
     active: bool = Field(default=True, alias="active")
-    primary_position_code: str | None = Field(default=None, alias="primaryPosition")
     bat_side_code: str | None = Field(default=None, alias="batSide")
     pitch_hand_code: str | None = Field(default=None, alias="pitchHand")
-    current_team_id: int | None = Field(default=None, alias="currentTeam")
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_nested_data(cls, values: dict[str, Any]) -> dict[str, Any]:
+        if "batSide" in values and isinstance(values["batSide"], dict):
+            values["batSide"] = values["batSide"]["code"]
+        if "pitchHand" in values and isinstance(values["pitchHand"], dict):
+            values["pitchHand"] = values["pitchHand"]["code"]
+        return values
+
+
+class PlayerTeamHistory(CustomModel):
+    player_id: int = Field(..., alias="playerId")
+    team_id: int = Field(..., alias="teamId")
+    primary_number: int | None = Field(default=None, alias="primaryNumber")
+    primary_position_code: str | None = Field(default=None, alias="primaryPosition")
+    start_date: datetime = Field(..., alias="startDate")
+    end_date: datetime | None = Field(default=None, alias="endDate")
+    is_current: bool = Field(default=True, alias="isCurrent")
 
     @model_validator(mode="before")
     @classmethod
     def extract_nested_data(cls, values: dict[str, Any]) -> dict[str, Any]:
         if "primaryPosition" in values and isinstance(values["primaryPosition"], dict):
             values["primaryPosition"] = values["primaryPosition"]["code"]
-        if "batSide" in values and isinstance(values["batSide"], dict):
-            values["batSide"] = values["batSide"]["code"]
-        if "pitchHand" in values and isinstance(values["pitchHand"], dict):
-            values["pitchHand"] = values["pitchHand"]["code"]
-        if "currentTeam" in values and isinstance(values["currentTeam"], dict):
-            values["currentTeam"] = values["currentTeam"]["id"]
+
+        # Set is_current based on end_date
+        if values.get("endDate") is None:
+            values["isCurrent"] = True
+        else:
+            values["isCurrent"] = False
+
         return values
 
 
