@@ -1,13 +1,52 @@
 import asyncio
 import os
-from typing import Any, List
+from enum import Enum
+from typing import Any, List, Type, Union
 
 import httpx
 from dotenv import load_dotenv
+from jsonpath_ng.ext import parse
 
 from common.decorators import retry
 
-from models import GameInformation, Player, Team, TeamSchedules
+from models import (
+    BatterGameLog,
+    GameInformation,
+    PitcherGameLog,
+    Player,
+    Team,
+    TeamSchedules,
+)
+
+
+class GameLogType(str, Enum):
+    """Enum for game log types with model mappings"""
+
+    BATTING = "batting"
+    PITCHING = "pitching"
+
+    @property
+    def model(self) -> Type[Union[BatterGameLog, PitcherGameLog]]:
+        """Get the Pydantic model for this log type"""
+        mapping = {
+            GameLogType.BATTING: BatterGameLog,
+            GameLogType.PITCHING: PitcherGameLog,
+        }
+        return mapping[self]
+
+    @property
+    def stats_key(self) -> str:
+        """Get the boxscore stats key for this log type"""
+        return self.value  # "batting" or "pitching"
+
+    @property
+    def player_list_key(self) -> str:
+        """Get the boxscore player list key for this log type"""
+        mapping = {
+            GameLogType.BATTING: "batters",
+            GameLogType.PITCHING: "pitchers",
+        }
+        return mapping[self]
 
 
 @retry(attempts=3, calls_per_second=10)
@@ -98,7 +137,7 @@ def _extract_player_bios(players: dict) -> dict:
     return {}
 
 
-async def _fetch_data(endpoint_type: str, extract_func, **kwargs):
+async def _fetch_data(endpoint_type: str, extract_func, **kwargs) -> Any:
     """Generic async function to fetch and extract data from any endpoint"""
     response = await _get_api_endpoints_and_params(
         endpoint_type=endpoint_type, **kwargs
@@ -106,7 +145,7 @@ async def _fetch_data(endpoint_type: str, extract_func, **kwargs):
     return extract_func(response)
 
 
-async def _get_games(start_date: str, end_date: str):
+async def _get_games(start_date: str, end_date: str) -> List[dict[str, Any]]:
     """Async function to get game information for a date range"""
     # Get schedules first
     schedules = await _fetch_data(
@@ -169,3 +208,69 @@ def process_game_information(start_date: str, end_date: str) -> List[GameInforma
     extracted_data = asyncio.run(_get_games(start_date, end_date))
 
     return [GameInformation.model_validate(game) for game in extracted_data]
+
+
+def _extract_game_logs_from_boxscore(
+    game_data: dict[str, Any], log_type: GameLogType
+) -> List[dict[str, Any]]:
+    game_id = game_data.get("game_id")
+    boxscore = game_data.get("boxscore", {})
+
+    logs = []
+
+    # JSONPath to get all players with the specific stats type
+    # For batting: finds all players where stats.batting exists
+    # For pitching: finds all players where stats.pitching exists
+    player_jsonpath = parse(f"$.teams[*].players.*[?stats.{log_type.stats_key}]")
+
+    # Find all matching players across both teams
+    player_matches = player_jsonpath.find(boxscore)
+
+    for match in player_matches:
+        player = match.value
+
+        # Determine which team (home/away) this player is on
+        # Navigate up the JSON tree to find team context
+        path_parts = str(match.full_path).split(".")
+        team_type = (
+            path_parts[1].replace("teams[", "").replace("]", "").strip("'")
+        )  # Extract 'home' or 'away'
+
+        team_data = boxscore["teams"][team_type]
+        team_id = team_data["team"]["id"]
+        is_home = team_type == "home"
+
+        # Get opponent
+        opponent_type = "away" if team_type == "home" else "home"
+        opponent_team_id = boxscore["teams"][opponent_type]["team"]["id"]
+
+        log = {
+            "gamePk": game_id,
+            "playerId": player["person"]["id"],
+            "teamId": team_id,
+            "opponentTeamId": opponent_team_id,
+            "isHome": is_home,
+            "position": player.get("position"),
+            "stats": player["stats"],
+        }
+        logs.append(log)
+
+    return logs
+
+
+def process_game_logs(
+    start_date: str, end_date: str, log_type: GameLogType
+) -> Union[List[BatterGameLog], List[PitcherGameLog]]:
+    # Reuse _get_games to fetch all game data
+    games_data = asyncio.run(_get_games(start_date, end_date))
+
+    # Extract logs from each game and flatten
+    all_logs = []
+    for game_data in games_data:
+        logs = _extract_game_logs_from_boxscore(game_data, log_type)
+        all_logs.extend(logs)
+
+    # Validate with appropriate Pydantic model
+    validated_logs = [log_type.model.model_validate(log) for log in all_logs]
+
+    return validated_logs

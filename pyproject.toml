@@ -16,6 +16,7 @@ dependencies = [
     "flask>=3.1.0",
     "httpx>=0.28.1",
     "ipykernel>=6.29.5",
+    "jsonpath-ng>=1.7.0",
     "logging>=0.4.9.6",
     "matplotlib>=3.10.1",
     "mlb-statsapi>=1.9.0",
