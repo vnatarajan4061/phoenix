@@ -1,8 +1,9 @@
 from typing import List
 
-from ingest_mlb.database.config import AsyncSessionLocal
-from ingest_mlb.database.models import TeamSchedule
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from database.config import AsyncSessionLocal
+from database.models import TeamSchedule
 
 
 async def ingest_schedules(schedules: List) -> int:
