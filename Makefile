@@ -4,7 +4,7 @@ MAKEFLAGS += --no-print-directory
 
 update:
 	@uv lock --upgrade
-	@uv sync
+	@uv sync --link-mode=copy
 
 RUNS = $(shell find src -mindepth 1 -maxdepth 1 -type d -not -name "common" -exec test -f {}/Makefile \; -print | xargs -n1 basename)
 

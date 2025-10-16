@@ -26,21 +26,82 @@ class TeamSchedules(CustomModel):
 
 class GameInformation(CustomModel):
     game_id: int = Field(..., alias="game_id")
+    game_date: str = Field(...)
+    game_datetime: str | None = Field(default=None)
+    game_status: str | None = Field(default=None)
+    detailed_state: str | None = Field(default=None)
+    day_night: str | None = Field(default=None)
+    venue_id: int | None = Field(default=None)
+    venue_name: str | None = Field(default=None)
+    home_team_id: int | None = Field(default=None)
+    home_team_name: str | None = Field(default=None)
+    away_team_id: int | None = Field(default=None)
+    away_team_name: str | None = Field(default=None)
+    home_wins: int | None = Field(default=None)
+    home_losses: int | None = Field(default=None)
+    home_win_pct: str | None = Field(default=None)
+    away_wins: int | None = Field(default=None)
+    away_losses: int | None = Field(default=None)
+    away_win_pct: str | None = Field(default=None)
+    home_score: int | None = Field(default=None)
+    away_score: int | None = Field(default=None)
     wind: str | None = Field(default=None)
     temperature: int | None = Field(default=None)
     weather_condition: str | None = Field(default=None)
 
     @model_validator(mode="before")
     @classmethod
-    def process_game_weather(cls, values: dict[str, Any]) -> dict[str, Any]:
-        values["wind"] = values["weather"].get("wind")
-        values["temperature"] = values["weather"].get("temp")
-        values["weather_condition"] = values["weather"].get("condition")
+    def process_game_data(cls, values: dict[str, Any]) -> dict[str, Any]:
+        datetime_info = values["datetime"]
+        status_info = values["status"]
+        venue_info = values["venue"]
+        teams_info = values["teams"]
+        home_team = teams_info.get("home", {})
+        away_team = teams_info.get("away", {})
+        home_record = home_team.get("record", {})
+        away_record = away_team.get("record", {})
+        linescore_teams = values["linescore"].get("teams", {})
+        weather_info = values["weather"]
+
+        # Date/time from datetime dict
+        values["game_date"] = datetime_info.get("officialDate")
+        values["game_datetime"] = datetime_info.get("dateTime")
+        values["day_night"] = datetime_info.get("dayNight")
+
+        # Status from status dict
+        values["game_status"] = status_info.get("abstractGameState")
+        values["detailed_state"] = status_info.get("detailedState")
+
+        # Venue from venue dict
+        values["venue_id"] = venue_info.get("id")
+        values["venue_name"] = venue_info.get("name")
+
+        # Home team from teams dict
+        values["home_team_id"] = home_team.get("id")
+        values["home_team_name"] = home_team.get("name")
+        values["home_wins"] = home_record.get("wins")
+        values["home_losses"] = home_record.get("losses")
+        values["home_win_pct"] = home_record.get("winningPercentage")
+
+        # Away team from teams dict
+        values["away_team_id"] = away_team.get("id")
+        values["away_team_name"] = away_team.get("name")
+        values["away_wins"] = away_record.get("wins")
+        values["away_losses"] = away_record.get("losses")
+        values["away_win_pct"] = away_record.get("winningPercentage")
+
+        # Scores from linescore dict
+        values["home_score"] = linescore_teams.get("home", {}).get("runs")
+        values["away_score"] = linescore_teams.get("away", {}).get("runs")
+
+        # Weather from weather dict
+        values["wind"] = weather_info.get("wind")
+        values["temperature"] = weather_info.get("temp")
+        values["weather_condition"] = weather_info.get("condition")
 
         return values
 
 
-# Core Entity Models for MLB Beat the Streak & ML
 class Team(CustomModel):
     team_id: int = Field(..., alias="id")
     name: str = Field(..., alias="name")
@@ -48,16 +109,16 @@ class Team(CustomModel):
     team_name: str | None = Field(default=None, alias="teamName")
     location_name: str | None = Field(default=None, alias="locationName")
     first_year_of_play: str | None = Field(default=None, alias="firstYearOfPlay")
-    league_id: int | None = Field(default=None, alias="league")
-    division_id: int | None = Field(default=None, alias="division")
-    venue_id: int | None = Field(default=None, alias="venue")
+    league_id: int | None = Field(default=None)
+    division_id: int | None = Field(default=None)
+    venue_id: int | None = Field(default=None)
 
     @model_validator(mode="before")
     @classmethod
     def extract_nested_ids(cls, values: dict[str, Any]) -> dict[str, Any]:
-        values["league"] = values["league"]["id"]
-        values["division"] = values["division"]["id"]
-        values["venue"] = values["venue"]["id"]
+        values["league_id"] = values["league"]["id"]
+        values["division_id"] = values["division"]["id"]
+        values["venue_id"] = values["venue"]["id"]
         return values
 
 
@@ -73,8 +134,8 @@ class Player(CustomModel):
     height: float | None = Field(default=None, alias="height")  # in meters
     weight: int | None = Field(default=None, alias="weight")
     active: bool = Field(default=True, alias="active")
-    bat_side_code: str | None = Field(default=None, alias="batSide")
-    pitch_hand_code: str | None = Field(default=None, alias="pitchHand")
+    bat_side_code: str | None = Field(default=None)
+    pitch_hand_code: str | None = Field(default=None)
 
     @model_validator(mode="before")
     @classmethod
@@ -96,9 +157,9 @@ class Player(CustomModel):
     @classmethod
     def extract_nested_data(cls, values: dict[str, Any]) -> dict[str, Any]:
         if "batSide" in values and isinstance(values["batSide"], dict):
-            values["batSide"] = values["batSide"]["code"]
+            values["bat_side_code"] = values["batSide"]["code"]
         if "pitchHand" in values and isinstance(values["pitchHand"], dict):
-            values["pitchHand"] = values["pitchHand"]["code"]
+            values["pitch_hand_code"] = values["pitchHand"]["code"]
         return values
 
 
@@ -106,275 +167,235 @@ class PlayerTeamHistory(CustomModel):
     player_id: int = Field(..., alias="playerId")
     team_id: int = Field(..., alias="teamId")
     primary_number: int | None = Field(default=None, alias="primaryNumber")
-    primary_position_code: str | None = Field(default=None, alias="primaryPosition")
+    primary_position_code: str | None = Field(default=None)
     start_date: datetime = Field(..., alias="startDate")
     end_date: datetime | None = Field(default=None, alias="endDate")
-    is_current: bool = Field(default=True, alias="isCurrent")
+    is_current: bool = Field(default=True)
 
     @model_validator(mode="before")
     @classmethod
     def extract_nested_data(cls, values: dict[str, Any]) -> dict[str, Any]:
         if "primaryPosition" in values and isinstance(values["primaryPosition"], dict):
-            values["primaryPosition"] = values["primaryPosition"]["code"]
+            values["primary_position_code"] = values["primaryPosition"]["code"]
 
         # Set is_current based on end_date
         if values.get("endDate") is None:
-            values["isCurrent"] = True
+            values["is_current"] = True
         else:
-            values["isCurrent"] = False
+            values["is_current"] = False
 
         return values
 
 
 class BatterGameLog(CustomModel):
-    # Game & Player identifiers
     game_id: int = Field(..., alias="gamePk")
     player_id: int = Field(..., alias="playerId")
     team_id: int = Field(..., alias="teamId")
     opponent_team_id: int = Field(..., alias="opponentTeamId")
     is_home: bool = Field(..., alias="isHome")
-
-    # Position information
-    position_code: str | None = Field(default=None, alias="positionCode")
-    position_name: str | None = Field(default=None, alias="positionName")
-    position_type: str | None = Field(default=None, alias="positionType")
-
-    # Game summary
-    batting_summary: str | None = Field(default=None, alias="battingSummary")
-
-    # Core batting stats
-    games_played: int = Field(default=0, alias="gamesPlayed")
-    at_bats: int = Field(default=0, alias="atBats")
-    runs: int = Field(default=0, alias="runs")
-    hits: int = Field(default=0, alias="hits")
-    doubles: int = Field(default=0, alias="doubles")
-    triples: int = Field(default=0, alias="triples")
-    home_runs: int = Field(default=0, alias="homeRuns")
-    rbi: int = Field(default=0, alias="rbi")
-    base_on_balls: int = Field(default=0, alias="baseOnBalls")
-    intentional_walks: int = Field(default=0, alias="intentionalWalks")
-    strike_outs: int = Field(default=0, alias="strikeOuts")
-    stolen_bases: int = Field(default=0, alias="stolenBases")
-    caught_stealing: int = Field(default=0, alias="caughtStealing")
-    hit_by_pitch: int = Field(default=0, alias="hitByPitch")
-    sac_bunts: int = Field(default=0, alias="sacBunts")
-    sac_flies: int = Field(default=0, alias="sacFlies")
-
-    # Advanced batting stats
-    plate_appearances: int = Field(default=0, alias="plateAppearances")
-    total_bases: int = Field(default=0, alias="totalBases")
-    left_on_base: int = Field(default=0, alias="leftOnBase")
-    ground_into_double_play: int = Field(default=0, alias="groundIntoDoublePlay")
-    ground_into_triple_play: int = Field(default=0, alias="groundIntoTriplePlay")
-    catchers_interference: int = Field(default=0, alias="catchersInterference")
-    pickoffs: int = Field(default=0, alias="pickoffs")
-
-    # Batted ball types
-    ground_outs: int = Field(default=0, alias="groundOuts")
-    fly_outs: int = Field(default=0, alias="flyOuts")
-    air_outs: int = Field(default=0, alias="airOuts")
-    pop_outs: int = Field(default=0, alias="popOuts")
-    line_outs: int = Field(default=0, alias="lineOuts")
-
-    # Rate stats (for reference, can be calculated downstream)
-    stolen_base_percentage: str | None = Field(
-        default=None, alias="stolenBasePercentage"
-    )
-    at_bats_per_home_run: str | None = Field(default=None, alias="atBatsPerHomeRun")
+    position_code: str | None = Field(default=None)
+    position_name: str | None = Field(default=None)
+    position_type: str | None = Field(default=None)
+    batting_summary: str | None = Field(default=None)
+    games_played: int = Field(default=0)
+    at_bats: int = Field(default=0)
+    runs: int = Field(default=0)
+    hits: int = Field(default=0)
+    doubles: int = Field(default=0)
+    triples: int = Field(default=0)
+    home_runs: int = Field(default=0)
+    rbi: int = Field(default=0)
+    base_on_balls: int = Field(default=0)
+    intentional_walks: int = Field(default=0)
+    strike_outs: int = Field(default=0)
+    stolen_bases: int = Field(default=0)
+    caught_stealing: int = Field(default=0)
+    hit_by_pitch: int = Field(default=0)
+    sac_bunts: int = Field(default=0)
+    sac_flies: int = Field(default=0)
+    plate_appearances: int = Field(default=0)
+    total_bases: int = Field(default=0)
+    left_on_base: int = Field(default=0)
+    ground_into_double_play: int = Field(default=0)
+    ground_into_triple_play: int = Field(default=0)
+    catchers_interference: int = Field(default=0)
+    pickoffs: int = Field(default=0)
+    ground_outs: int = Field(default=0)
+    fly_outs: int = Field(default=0)
+    air_outs: int = Field(default=0)
+    pop_outs: int = Field(default=0)
+    line_outs: int = Field(default=0)
+    stolen_base_percentage: str | None = Field(default=None)
+    at_bats_per_home_run: str | None = Field(default=None)
 
     @model_validator(mode="before")
     @classmethod
     def extract_batter_game_log(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Extract and flatten batting data from boxscore player structure"""
-
         # Extract position info
         if "position" in values and isinstance(values["position"], dict):
-            values["positionCode"] = values["position"].get("code")
-            values["positionName"] = values["position"].get("name")
-            values["positionType"] = values["position"].get("type")
+            values["position_code"] = values["position"].get("code")
+            values["position_name"] = values["position"].get("name")
+            values["position_type"] = values["position"].get("type")
 
         # Extract batting stats from stats.batting
         if "stats" in values and "batting" in values["stats"]:
             batting = values["stats"]["batting"]
-            values["battingSummary"] = batting.get("summary")
-            values["gamesPlayed"] = batting.get("gamesPlayed", 0)
-            values["atBats"] = batting.get("atBats", 0)
+            values["batting_summary"] = batting.get("summary")
+            values["games_played"] = batting.get("gamesPlayed", 0)
+            values["at_bats"] = batting.get("atBats", 0)
             values["runs"] = batting.get("runs", 0)
             values["hits"] = batting.get("hits", 0)
             values["doubles"] = batting.get("doubles", 0)
             values["triples"] = batting.get("triples", 0)
-            values["homeRuns"] = batting.get("homeRuns", 0)
+            values["home_runs"] = batting.get("homeRuns", 0)
             values["rbi"] = batting.get("rbi", 0)
-            values["baseOnBalls"] = batting.get("baseOnBalls", 0)
-            values["intentionalWalks"] = batting.get("intentionalWalks", 0)
-            values["strikeOuts"] = batting.get("strikeOuts", 0)
-            values["stolenBases"] = batting.get("stolenBases", 0)
-            values["caughtStealing"] = batting.get("caughtStealing", 0)
-            values["hitByPitch"] = batting.get("hitByPitch", 0)
-            values["sacBunts"] = batting.get("sacBunts", 0)
-            values["sacFlies"] = batting.get("sacFlies", 0)
-            values["plateAppearances"] = batting.get("plateAppearances", 0)
-            values["totalBases"] = batting.get("totalBases", 0)
-            values["leftOnBase"] = batting.get("leftOnBase", 0)
-            values["groundIntoDoublePlay"] = batting.get("groundIntoDoublePlay", 0)
-            values["groundIntoTriplePlay"] = batting.get("groundIntoTriplePlay", 0)
-            values["catchersInterference"] = batting.get("catchersInterference", 0)
+            values["base_on_balls"] = batting.get("baseOnBalls", 0)
+            values["intentional_walks"] = batting.get("intentionalWalks", 0)
+            values["strike_outs"] = batting.get("strikeOuts", 0)
+            values["stolen_bases"] = batting.get("stolenBases", 0)
+            values["caught_stealing"] = batting.get("caughtStealing", 0)
+            values["hit_by_pitch"] = batting.get("hitByPitch", 0)
+            values["sac_bunts"] = batting.get("sacBunts", 0)
+            values["sac_flies"] = batting.get("sacFlies", 0)
+            values["plate_appearances"] = batting.get("plateAppearances", 0)
+            values["total_bases"] = batting.get("totalBases", 0)
+            values["left_on_base"] = batting.get("leftOnBase", 0)
+            values["ground_into_double_play"] = batting.get("groundIntoDoublePlay", 0)
+            values["ground_into_triple_play"] = batting.get("groundIntoTriplePlay", 0)
+            values["catchers_interference"] = batting.get("catchersInterference", 0)
             values["pickoffs"] = batting.get("pickoffs", 0)
-            values["groundOuts"] = batting.get("groundOuts", 0)
-            values["flyOuts"] = batting.get("flyOuts", 0)
-            values["airOuts"] = batting.get("airOuts", 0)
-            values["popOuts"] = batting.get("popOuts", 0)
-            values["lineOuts"] = batting.get("lineOuts", 0)
-            values["stolenBasePercentage"] = batting.get("stolenBasePercentage")
-            values["atBatsPerHomeRun"] = batting.get("atBatsPerHomeRun")
+            values["ground_outs"] = batting.get("groundOuts", 0)
+            values["fly_outs"] = batting.get("flyOuts", 0)
+            values["air_outs"] = batting.get("airOuts", 0)
+            values["pop_outs"] = batting.get("popOuts", 0)
+            values["line_outs"] = batting.get("lineOuts", 0)
+            values["stolen_base_percentage"] = batting.get("stolenBasePercentage")
+            values["at_bats_per_home_run"] = batting.get("atBatsPerHomeRun")
 
         return values
 
 
 class PitcherGameLog(CustomModel):
-    # Game & Player identifiers
     game_id: int = Field(..., alias="gamePk")
     player_id: int = Field(..., alias="playerId")
     team_id: int = Field(..., alias="teamId")
     opponent_team_id: int = Field(..., alias="opponentTeamId")
     is_home: bool = Field(..., alias="isHome")
-
-    # Position information
-    position_code: str | None = Field(default=None, alias="positionCode")
-    position_name: str | None = Field(default=None, alias="positionName")
-
-    # Game summary
-    pitching_summary: str | None = Field(default=None, alias="pitchingSummary")
-    pitching_note: str | None = Field(default=None, alias="pitchingNote")
-
-    # Core pitching stats
-    games_played: int = Field(default=0, alias="gamesPlayed")
-    games_started: int = Field(default=0, alias="gamesStarted")
-    games_finished: int = Field(default=0, alias="gamesFinished")
-    complete_games: int = Field(default=0, alias="completeGames")
-    shutouts: int = Field(default=0, alias="shutouts")
-    wins: int = Field(default=0, alias="wins")
-    losses: int = Field(default=0, alias="losses")
-    saves: int = Field(default=0, alias="saves")
-    save_opportunities: int = Field(default=0, alias="saveOpportunities")
-    holds: int = Field(default=0, alias="holds")
-    blown_saves: int = Field(default=0, alias="blownSaves")
-
-    # Innings and batters
-    innings_pitched: str | None = Field(default=None, alias="inningsPitched")
-    batters_faced: int = Field(default=0, alias="battersFaced")
-    outs: int = Field(default=0, alias="outs")
-
-    # Pitch counts
-    pitches_thrown: int = Field(default=0, alias="pitchesThrown")
-    strikes: int = Field(default=0, alias="strikes")
-    balls: int = Field(default=0, alias="balls")
-    strike_percentage: str | None = Field(default=None, alias="strikePercentage")
-
-    # Results allowed
-    hits: int = Field(default=0, alias="hits")
-    runs: int = Field(default=0, alias="runs")
-    earned_runs: int = Field(default=0, alias="earnedRuns")
-    home_runs: int = Field(default=0, alias="homeRuns")
-    strike_outs: int = Field(default=0, alias="strikeOuts")
-    base_on_balls: int = Field(default=0, alias="baseOnBalls")
-    intentional_walks: int = Field(default=0, alias="intentionalWalks")
-    hit_batsmen: int = Field(default=0, alias="hitBatsmen")
-
-    # Advanced pitching stats
-    wild_pitches: int = Field(default=0, alias="wildPitches")
-    balks: int = Field(default=0, alias="balks")
-    pickoffs: int = Field(default=0, alias="pickoffs")
-    inherited_runners: int = Field(default=0, alias="inheritedRunners")
-    inherited_runners_scored: int = Field(default=0, alias="inheritedRunnersScored")
-    passed_ball: int = Field(default=0, alias="passedBall")
-
-    # Batted ball types allowed
-    ground_outs: int = Field(default=0, alias="groundOuts")
-    fly_outs: int = Field(default=0, alias="flyOuts")
-    air_outs: int = Field(default=0, alias="airOuts")
-    pop_outs: int = Field(default=0, alias="popOuts")
-    line_outs: int = Field(default=0, alias="lineOuts")
-    doubles: int = Field(default=0, alias="doubles")
-    triples: int = Field(default=0, alias="triples")
-
-    # Other stats
-    rbi: int = Field(default=0, alias="rbi")
-    sac_bunts: int = Field(default=0, alias="sacBunts")
-    sac_flies: int = Field(default=0, alias="sacFlies")
-    catchers_interference: int = Field(default=0, alias="catchersInterference")
-    stolen_bases: int = Field(default=0, alias="stolenBases")
-    caught_stealing: int = Field(default=0, alias="caughtStealing")
-    stolen_base_percentage: str | None = Field(
-        default=None, alias="stolenBasePercentage"
-    )
-
-    # Rate stats (for reference)
-    runs_scored_per_9: str | None = Field(default=None, alias="runsScoredPer9")
-    home_runs_per_9: str | None = Field(default=None, alias="homeRunsPer9")
+    position_code: str | None = Field(default=None)
+    position_name: str | None = Field(default=None)
+    pitching_summary: str | None = Field(default=None)
+    pitching_note: str | None = Field(default=None)
+    games_played: int = Field(default=0)
+    games_started: int = Field(default=0)
+    games_finished: int = Field(default=0)
+    complete_games: int = Field(default=0)
+    shutouts: int = Field(default=0)
+    wins: int = Field(default=0)
+    losses: int = Field(default=0)
+    saves: int = Field(default=0)
+    save_opportunities: int = Field(default=0)
+    holds: int = Field(default=0)
+    blown_saves: int = Field(default=0)
+    innings_pitched: str | None = Field(default=None)
+    batters_faced: int = Field(default=0)
+    outs: int = Field(default=0)
+    pitches_thrown: int = Field(default=0)
+    strikes: int = Field(default=0)
+    balls: int = Field(default=0)
+    strike_percentage: str | None = Field(default=None)
+    hits: int = Field(default=0)
+    runs: int = Field(default=0)
+    earned_runs: int = Field(default=0)
+    home_runs: int = Field(default=0)
+    strike_outs: int = Field(default=0)
+    base_on_balls: int = Field(default=0)
+    intentional_walks: int = Field(default=0)
+    hit_batsmen: int = Field(default=0)
+    wild_pitches: int = Field(default=0)
+    balks: int = Field(default=0)
+    pickoffs: int = Field(default=0)
+    inherited_runners: int = Field(default=0)
+    inherited_runners_scored: int = Field(default=0)
+    passed_ball: int = Field(default=0)
+    ground_outs: int = Field(default=0)
+    fly_outs: int = Field(default=0)
+    air_outs: int = Field(default=0)
+    pop_outs: int = Field(default=0)
+    line_outs: int = Field(default=0)
+    doubles: int = Field(default=0)
+    triples: int = Field(default=0)
+    rbi: int = Field(default=0)
+    sac_bunts: int = Field(default=0)
+    sac_flies: int = Field(default=0)
+    catchers_interference: int = Field(default=0)
+    stolen_bases: int = Field(default=0)
+    caught_stealing: int = Field(default=0)
+    stolen_base_percentage: str | None = Field(default=None)
+    runs_scored_per_9: str | None = Field(default=None)
+    home_runs_per_9: str | None = Field(default=None)
 
     @model_validator(mode="before")
     @classmethod
     def extract_pitcher_game_log(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Extract and flatten pitching data from boxscore player structure"""
-
         # Extract position info
         if "position" in values and isinstance(values["position"], dict):
-            values["positionCode"] = values["position"].get("code")
-            values["positionName"] = values["position"].get("name")
+            values["position_code"] = values["position"].get("code")
+            values["position_name"] = values["position"].get("name")
 
         # Extract pitching stats from stats.pitching
         if "stats" in values and "pitching" in values["stats"]:
             pitching = values["stats"]["pitching"]
-            values["pitchingSummary"] = pitching.get("summary")
-            values["pitchingNote"] = pitching.get("note")
-            values["gamesPlayed"] = pitching.get("gamesPlayed", 0)
-            values["gamesStarted"] = pitching.get("gamesStarted", 0)
-            values["gamesFinished"] = pitching.get("gamesFinished", 0)
-            values["completeGames"] = pitching.get("completeGames", 0)
+            values["pitching_summary"] = pitching.get("summary")
+            values["pitching_note"] = pitching.get("note")
+            values["games_played"] = pitching.get("gamesPlayed", 0)
+            values["games_started"] = pitching.get("gamesStarted", 0)
+            values["games_finished"] = pitching.get("gamesFinished", 0)
+            values["complete_games"] = pitching.get("completeGames", 0)
             values["shutouts"] = pitching.get("shutouts", 0)
             values["wins"] = pitching.get("wins", 0)
             values["losses"] = pitching.get("losses", 0)
             values["saves"] = pitching.get("saves", 0)
-            values["saveOpportunities"] = pitching.get("saveOpportunities", 0)
+            values["save_opportunities"] = pitching.get("saveOpportunities", 0)
             values["holds"] = pitching.get("holds", 0)
-            values["blownSaves"] = pitching.get("blownSaves", 0)
-            values["inningsPitched"] = pitching.get("inningsPitched")
-            values["battersFaced"] = pitching.get("battersFaced", 0)
+            values["blown_saves"] = pitching.get("blownSaves", 0)
+            values["innings_pitched"] = pitching.get("inningsPitched")
+            values["batters_faced"] = pitching.get("battersFaced", 0)
             values["outs"] = pitching.get("outs", 0)
-            values["pitchesThrown"] = pitching.get("pitchesThrown", 0)
+            values["pitches_thrown"] = pitching.get("pitchesThrown", 0)
             values["strikes"] = pitching.get("strikes", 0)
             values["balls"] = pitching.get("balls", 0)
-            values["strikePercentage"] = pitching.get("strikePercentage")
+            values["strike_percentage"] = pitching.get("strikePercentage")
             values["hits"] = pitching.get("hits", 0)
             values["runs"] = pitching.get("runs", 0)
-            values["earnedRuns"] = pitching.get("earnedRuns", 0)
-            values["homeRuns"] = pitching.get("homeRuns", 0)
-            values["strikeOuts"] = pitching.get("strikeOuts", 0)
-            values["baseOnBalls"] = pitching.get("baseOnBalls", 0)
-            values["intentionalWalks"] = pitching.get("intentionalWalks", 0)
-            values["hitBatsmen"] = pitching.get("hitBatsmen", 0)
-            values["wildPitches"] = pitching.get("wildPitches", 0)
+            values["earned_runs"] = pitching.get("earnedRuns", 0)
+            values["home_runs"] = pitching.get("homeRuns", 0)
+            values["strike_outs"] = pitching.get("strikeOuts", 0)
+            values["base_on_balls"] = pitching.get("baseOnBalls", 0)
+            values["intentional_walks"] = pitching.get("intentionalWalks", 0)
+            values["hit_batsmen"] = pitching.get("hitBatsmen", 0)
+            values["wild_pitches"] = pitching.get("wildPitches", 0)
             values["balks"] = pitching.get("balks", 0)
             values["pickoffs"] = pitching.get("pickoffs", 0)
-            values["inheritedRunners"] = pitching.get("inheritedRunners", 0)
-            values["inheritedRunnersScored"] = pitching.get("inheritedRunnersScored", 0)
-            values["passedBall"] = pitching.get("passedBall", 0)
-            values["groundOuts"] = pitching.get("groundOuts", 0)
-            values["flyOuts"] = pitching.get("flyOuts", 0)
-            values["airOuts"] = pitching.get("airOuts", 0)
-            values["popOuts"] = pitching.get("popOuts", 0)
-            values["lineOuts"] = pitching.get("lineOuts", 0)
+            values["inherited_runners"] = pitching.get("inheritedRunners", 0)
+            values["inherited_runners_scored"] = pitching.get(
+                "inheritedRunnersScored", 0
+            )
+            values["passed_ball"] = pitching.get("passedBall", 0)
+            values["ground_outs"] = pitching.get("groundOuts", 0)
+            values["fly_outs"] = pitching.get("flyOuts", 0)
+            values["air_outs"] = pitching.get("airOuts", 0)
+            values["pop_outs"] = pitching.get("popOuts", 0)
+            values["line_outs"] = pitching.get("lineOuts", 0)
             values["doubles"] = pitching.get("doubles", 0)
             values["triples"] = pitching.get("triples", 0)
             values["rbi"] = pitching.get("rbi", 0)
-            values["sacBunts"] = pitching.get("sacBunts", 0)
-            values["sacFlies"] = pitching.get("sacFlies", 0)
-            values["catchersInterference"] = pitching.get("catchersInterference", 0)
-            values["stolenBases"] = pitching.get("stolenBases", 0)
-            values["caughtStealing"] = pitching.get("caughtStealing", 0)
-            values["stolenBasePercentage"] = pitching.get("stolenBasePercentage")
-            values["runsScoredPer9"] = pitching.get("runsScoredPer9")
-            values["homeRunsPer9"] = pitching.get("homeRunsPer9")
+            values["sac_bunts"] = pitching.get("sacBunts", 0)
+            values["sac_flies"] = pitching.get("sacFlies", 0)
+            values["catchers_interference"] = pitching.get("catchersInterference", 0)
+            values["stolen_bases"] = pitching.get("stolenBases", 0)
+            values["caught_stealing"] = pitching.get("caughtStealing", 0)
+            values["stolen_base_percentage"] = pitching.get("stolenBasePercentage")
+            values["runs_scored_per_9"] = pitching.get("runsScoredPer9")
+            values["home_runs_per_9"] = pitching.get("homeRunsPer9")
 
         return values

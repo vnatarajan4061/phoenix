@@ -89,6 +89,13 @@ async def _get_api_endpoints_and_params(endpoint_type: str, **kwargs) -> httpx.R
         return await client.get(f"{api_key}/{endpoint}", params=params)
 
 
+async def _fetch_data(endpoint_type: str, extract_func, **kwargs) -> Any:
+    response = await _get_api_endpoints_and_params(
+        endpoint_type=endpoint_type, **kwargs
+    )
+    return extract_func(response)
+
+
 def _extract_teams(response: httpx.Response) -> List[dict[str, Any]]:
     return response.json().get("teams", [])
 
@@ -116,6 +123,11 @@ def _extract_game_information(
     game_info: List[dict[str, Any]] = [
         {
             "game_id": int(str(response.url).split("/game/")[1].split("/feed")[0]),
+            "datetime": response.json().get("gameData", {}).get("datetime", {}),
+            "status": response.json().get("gameData", {}).get("status", {}),
+            "venue": response.json().get("gameData", {}).get("venue", {}),
+            "teams": response.json().get("gameData", {}).get("teams", {}),
+            "linescore": response.json().get("liveData", {}).get("linescore", {}),
             "weather": response.json().get("gameData", {}).get("weather", {}),
             "boxscore": response.json().get("liveData", {}).get("boxscore", {}),
         }
@@ -123,26 +135,6 @@ def _extract_game_information(
     ]
 
     return game_info
-
-
-def _extract_player_stats(players: dict) -> dict:
-    return {}
-
-
-def _extract_matchup_stats(matchup: dict) -> dict:
-    return {}
-
-
-def _extract_player_bios(players: dict) -> dict:
-    return {}
-
-
-async def _fetch_data(endpoint_type: str, extract_func, **kwargs) -> Any:
-    """Generic async function to fetch and extract data from any endpoint"""
-    response = await _get_api_endpoints_and_params(
-        endpoint_type=endpoint_type, **kwargs
-    )
-    return extract_func(response)
 
 
 async def _get_games(start_date: str, end_date: str) -> List[dict[str, Any]]:
@@ -167,47 +159,6 @@ async def _get_games(start_date: str, end_date: str) -> List[dict[str, Any]]:
 
     # Extract data from all responses
     return _extract_game_information(game_responses)
-
-
-def process_teams(season: int) -> List[Team]:
-    """Process teams and return validated models"""
-    extracted_data = asyncio.run(
-        _fetch_data(endpoint_type="teams", extract_func=_extract_teams, season=season)
-    )
-
-    return [Team.model_validate(team) for team in extracted_data]
-
-
-def process_players(season: int) -> List[Player]:
-    """Process players and return validated models"""
-    extracted_data = asyncio.run(
-        _fetch_data(
-            endpoint_type="players", extract_func=_extract_players, season=season
-        )
-    )
-
-    return [Player.model_validate(player) for player in extracted_data]
-
-
-def process_schedules(start_date: str, end_date: str) -> List[TeamSchedules]:
-    """Process team schedules and return validated models"""
-    extracted_data = asyncio.run(
-        _fetch_data(
-            endpoint_type="schedule",
-            extract_func=_extract_team_schedules,
-            start_date=start_date,
-            end_date=end_date,
-        )
-    )
-
-    return [TeamSchedules.model_validate(schedule) for schedule in extracted_data]
-
-
-def process_game_information(start_date: str, end_date: str) -> List[GameInformation]:
-    """Process game information and return validated models"""
-    extracted_data = asyncio.run(_get_games(start_date, end_date))
-
-    return [GameInformation.model_validate(game) for game in extracted_data]
 
 
 def _extract_game_logs_from_boxscore(
@@ -256,6 +207,47 @@ def _extract_game_logs_from_boxscore(
         logs.append(log)
 
     return logs
+
+
+def process_teams(season: int) -> List[Team]:
+    """Process teams and return validated models"""
+    extracted_data = asyncio.run(
+        _fetch_data(endpoint_type="teams", extract_func=_extract_teams, season=season)
+    )
+
+    return [Team.model_validate(team) for team in extracted_data]
+
+
+def process_players(season: int) -> List[Player]:
+    """Process players and return validated models"""
+    extracted_data = asyncio.run(
+        _fetch_data(
+            endpoint_type="players", extract_func=_extract_players, season=season
+        )
+    )
+
+    return [Player.model_validate(player) for player in extracted_data]
+
+
+def process_schedules(start_date: str, end_date: str) -> List[TeamSchedules]:
+    """Process team schedules and return validated models"""
+    extracted_data = asyncio.run(
+        _fetch_data(
+            endpoint_type="schedule",
+            extract_func=_extract_team_schedules,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    )
+
+    return [TeamSchedules.model_validate(schedule) for schedule in extracted_data]
+
+
+def process_game_information(start_date: str, end_date: str) -> List[GameInformation]:
+    """Process game information and return validated models"""
+    extracted_data = asyncio.run(_get_games(start_date, end_date))
+
+    return [GameInformation.model_validate(game) for game in extracted_data]
 
 
 def process_game_logs(
